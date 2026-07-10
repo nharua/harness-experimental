@@ -169,7 +169,7 @@ without parsing the human table.
 | `score-trace` | Observability | Score trace detail against lane requirements. | optional `--id` |
 | `score-context` | Context selection | Score trace reads against compiled context rules. | trace id |
 | `audit` | Entropy auditing | Run drift checks and compute entropy score. | none |
-| `propose` | Entropy auditing | Generate improvement proposals from friction, interventions, and audit findings. | optional `--commit` |
+| `propose` | Entropy auditing | Read deterministic improvement proposals, or explicitly accept/reject one stable key. | `--accept <key>` plus one outcome schedule, or `--reject <key> --reason <text>` |
 | `query matrix` | Task state | Show durable story proof matrix. | optional `--numeric` |
 | `query dependencies` | Task state | Show story dependency edges. | optional `--story` |
 | `query backlog` | Entropy auditing | Show harness improvement backlog. | optional `--open`, `--closed` |

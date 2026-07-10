@@ -5,8 +5,8 @@ Phase 5 starts the self-improvement loop:
 ```text
 friction + interventions + audit findings
   -> harness-cli propose
-  -> proposed backlog item
-  -> human review
+  -> human accepts or rejects one stable proposal key
+  -> accepted backlog occurrence plus outcome-review schedule
   -> implementation with predicted impact
   -> close with actual outcome
 ```
@@ -23,16 +23,28 @@ The command is rule-based. It looks for:
 - repeated intervention patterns,
 - non-zero audit categories.
 
-Each proposal includes title, component, evidence, predicted impact, risk,
-suggested action, validation plan, and confidence.
+Each proposal includes a stable versioned key, lifecycle state, title, component,
+evidence, predicted impact, risk, suggested action, validation plan, and
+confidence. Running `propose` without a decision flag is read-only.
 
-## Commit Proposals
+## Decide One Proposal
 
 ```bash
-scripts/bin/harness-cli propose --commit
+scripts/bin/harness-cli propose --accept <proposal-key> --outcome-manual
+scripts/bin/harness-cli propose --accept <proposal-key> --outcome-due <RFC3339>
+scripts/bin/harness-cli propose --accept <proposal-key> --outcome-after-traces <positive-integer>
+
+# Or retain a terminal human decision without creating implementation work.
+scripts/bin/harness-cli propose --reject <proposal-key> --reason "Not worth the added complexity"
 ```
 
-Committed proposals become `proposed` backlog items. Humans review them with:
+Acceptance creates or reuses one `accepted` backlog occurrence and prints the
+next `harness_improvement` intake command. Rejection records one terminal reason
+and covered evidence without creating an intake, story, or Symphony run.
+`propose --commit` is intentionally rejected; Harness never bulk-writes every
+currently displayed suggestion.
+
+Humans review accepted work with:
 
 ```bash
 scripts/bin/harness-cli query backlog --open
@@ -44,8 +56,9 @@ scripts/bin/harness-cli query backlog --open
 - Normal proposals need a story packet or clear backlog acceptance.
 - High-risk proposals need a durable decision record before changing source
   hierarchy, architecture direction, validation requirements, or risk policy.
-- Completed proposal work must close the backlog item with actual outcome
-  evidence.
+- Keyed accepted work is closed by the explicit story-completion lifecycle,
+  not `backlog close`; later outcome observation remains separate from
+  implementation proof.
 
 ## Validation
 

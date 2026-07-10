@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -133,4 +133,9 @@ writer, and every accepted improvement leaves a concrete outcome-review trigger.
 
 ## Evidence
 
-Add exact decision, refusal, idempotency, and rebuild output after implementation.
+Implemented deterministic proposal keys and lifecycle display, one-key
+accept/reject commands, observation schedules, idempotency and legacy refusal,
+keyed backlog-close protection, replayable decision operations, and focused
+decision tests. Validation passed: `cargo fmt --check`, `cargo test --workspace`,
+`cargo clippy --workspace -- -D warnings`, `scripts/validate-changeset-rebuild.sh`,
+`harness-cli story verify US-075`, and `git diff --check`.

@@ -1122,6 +1122,8 @@ impl AuditResult {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ImprovementProposal {
+    pub key: String,
+    pub lifecycle_state: String,
     pub title: String,
     pub component: String,
     pub evidence: String,

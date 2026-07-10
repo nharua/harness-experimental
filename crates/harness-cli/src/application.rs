@@ -2,11 +2,12 @@ use std::path::PathBuf;
 
 use crate::domain::{
     AuditResult, BacklogFilter, BacklogRecord, BoolFlag, ContextScoreResult, CsvList,
-    DecisionRecord, FrictionRecord, HarnessStats, ImprovementProposal, InputType, IntakeRecord,
-    InterventionRecord, RiskLane, StoryMatrixRecord, StoryVerifyAllResult, StoryVerifyStatus,
-    ToolArgSpec, ToolEntry, TraceRecord, TraceScoreResult,
+    DecisionRecord, FrictionRecord, HarnessStats, InputType, IntakeRecord, InterventionRecord,
+    RiskLane, StoryMatrixRecord, StoryVerifyAllResult, StoryVerifyStatus, ToolArgSpec, ToolEntry,
+    TraceRecord, TraceScoreResult,
 };
 use crate::infrastructure::{HarnessRepository, SqliteHarnessRepository, ToolCheckResult};
+use crate::infrastructure::{ProposalDecision, ProposalResult};
 
 #[derive(Debug)]
 pub struct HarnessContext {
@@ -330,8 +331,11 @@ impl HarnessService {
         self.repository.audit_record_evidence()
     }
 
-    pub fn propose(&self, commit: bool) -> crate::infrastructure::Result<Vec<ImprovementProposal>> {
-        self.repository.propose(commit)
+    pub fn propose(
+        &self,
+        decision: ProposalDecision,
+    ) -> crate::infrastructure::Result<ProposalResult> {
+        self.repository.propose(decision)
     }
 
     pub fn query_sql(&self, sql: &str) -> crate::infrastructure::Result<QueryTable> {

@@ -18,7 +18,7 @@ use crate::domain::{
     InputType, IntakeRecord, InterventionRecord, RiskLane, StoryMatrixRecord, StoryVerifyAllResult,
     ToolEntry, TraceQualityTier, TraceRecord, TraceScoreResult, RISK_LANE_HELP,
 };
-use crate::infrastructure::ToolCheckResult;
+use crate::infrastructure::{ProposalDecision, ProposalResult, ToolCheckResult};
 
 #[derive(Parser, Debug)]
 #[command(name = "harness-cli")]
@@ -380,8 +380,21 @@ struct ScoreTraceArgs {
 
 #[derive(Args, Debug)]
 struct ProposeArgs {
+    /// Removed bulk writer. Select one key with --accept or --reject instead.
     #[arg(long)]
     commit: bool,
+    #[arg(long, conflicts_with = "reject")]
+    accept: Option<String>,
+    #[arg(long, conflicts_with = "accept")]
+    reject: Option<String>,
+    #[arg(long)]
+    outcome_manual: bool,
+    #[arg(long)]
+    outcome_due: Option<String>,
+    #[arg(long)]
+    outcome_after_traces: Option<String>,
+    #[arg(long)]
+    reason: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -496,6 +509,8 @@ struct InterventionsQueryArgs {
 
 #[derive(Debug, Error)]
 pub enum InterfaceError {
+    #[error("{0}")]
+    InvalidArgument(String),
     #[error("{0}")]
     ParseHarnessValue(#[from] crate::domain::ParseHarnessValueError),
     #[error("{0}")]
@@ -747,7 +762,64 @@ pub fn run(cli: Cli) -> Result<(), InterfaceError> {
             };
             print_audit(&result)
         }
-        Command::Propose(args) => print_proposals(&service.propose(args.commit)?),
+        Command::Propose(args) => {
+            if args.commit {
+                eprintln!("use propose --accept <proposal-key> or propose --reject <proposal-key>");
+                std::process::exit(2);
+            }
+            let decision = match (args.accept, args.reject) {
+                (None, None) => {
+                    if args.outcome_manual
+                        || args.outcome_due.is_some()
+                        || args.outcome_after_traces.is_some()
+                        || args.reason.is_some()
+                    {
+                        return Err(InterfaceError::InvalidArgument(
+                            "propose decision flags require --accept or --reject".to_owned(),
+                        ));
+                    }
+                    ProposalDecision::Preview
+                }
+                (Some(key), None) => {
+                    let schedules = usize::from(args.outcome_manual)
+                        + usize::from(args.outcome_due.is_some())
+                        + usize::from(args.outcome_after_traces.is_some());
+                    if schedules != 1 || args.reason.is_some() {
+                        return Err(InterfaceError::InvalidArgument(
+                            "propose --accept requires exactly one outcome schedule".to_owned(),
+                        ));
+                    }
+                    let schedule = if args.outcome_manual {
+                        "manual".to_owned()
+                    } else if let Some(value) = args.outcome_due {
+                        format!("due:{value}")
+                    } else {
+                        format!("traces:{}", args.outcome_after_traces.unwrap_or_default())
+                    };
+                    ProposalDecision::Accept { key, schedule }
+                }
+                (None, Some(key)) => {
+                    if args.outcome_manual
+                        || args.outcome_due.is_some()
+                        || args.outcome_after_traces.is_some()
+                    {
+                        return Err(InterfaceError::InvalidArgument(
+                            "propose --reject does not accept an outcome schedule".to_owned(),
+                        ));
+                    }
+                    ProposalDecision::Reject {
+                        key,
+                        reason: args.reason.ok_or_else(|| {
+                            InterfaceError::InvalidArgument(
+                                "propose --reject requires --reason".to_owned(),
+                            )
+                        })?,
+                    }
+                }
+                _ => unreachable!(),
+            };
+            print_proposal_result(&service.propose(decision)?)
+        }
         Command::Db(args) => match args.action {
             DbAction::Changeset(args) => match args.action {
                 ChangesetAction::Apply { path } => {
@@ -958,6 +1030,8 @@ fn print_proposals(proposals: &[ImprovementProposal]) {
             index + 1,
             proposal.confidence
         );
+        println!("  Key: {}", proposal.key);
+        println!("  Lifecycle: {}", proposal.lifecycle_state);
         println!("  Title: {}", proposal.title);
         println!("  Component: {}", proposal.component);
         println!("  Evidence: {}", proposal.evidence);
@@ -971,9 +1045,16 @@ fn print_proposals(proposals: &[ImprovementProposal]) {
     }
     println!();
     println!(
-        "{} proposals generated. Use --commit to create backlog items.",
+        "{} proposals generated. Use --accept <proposal-key> or --reject <proposal-key> to make one explicit decision.",
         proposals.len()
     );
+}
+
+fn print_proposal_result(result: &ProposalResult) {
+    print_proposals(&result.proposals);
+    if let Some(message) = &result.message {
+        println!("{message}");
+    }
 }
 
 fn print_changeset_apply_result(result: ChangesetApplyResult) {

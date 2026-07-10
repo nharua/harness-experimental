@@ -307,12 +307,15 @@ Improvement proposals:
 
 ```bash
 scripts/bin/harness-cli propose
-scripts/bin/harness-cli propose --commit
+scripts/bin/harness-cli propose --accept <proposal-key> --outcome-after-traces 20
+scripts/bin/harness-cli propose --reject <proposal-key> --reason "Not worth the added complexity"
 ```
 
-`propose` prints deterministic proposals from repeated friction, interventions,
-and audit drift. `--commit` creates proposed backlog items only; it does not
-edit policy docs or approve the proposal.
+`propose` prints deterministic, read-only proposals from repeated friction,
+interventions, and audit drift. A human explicitly accepts one key with exactly
+one outcome schedule or rejects one key with a reason. The old bulk
+`--commit` path is rejected so displayed proposals cannot become accidental
+work items.
 
 ## Decision Records
 

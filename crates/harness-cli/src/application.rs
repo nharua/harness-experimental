@@ -144,6 +144,23 @@ pub struct BacklogOutcomeInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyReconcileRecord {
+    pub backlog_id: i64,
+    pub classification: String,
+    pub proposal_key: Option<String>,
+    pub reason: String,
+    pub changes: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct LegacyReconcileResult {
+    pub applied: bool,
+    pub changed: usize,
+    pub trace_id: Option<i64>,
+    pub records: Vec<LegacyReconcileRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutcomeObservationRecord {
     pub backlog_id: i64,
     pub ordinal: i64,
@@ -320,6 +337,13 @@ impl HarnessService {
         input: BacklogOutcomeInput,
     ) -> crate::infrastructure::Result<OutcomeObservationRecord> {
         self.repository.record_backlog_outcome(input)
+    }
+
+    pub fn reconcile_legacy_improvements(
+        &self,
+        apply: bool,
+    ) -> crate::infrastructure::Result<LegacyReconcileResult> {
+        self.repository.reconcile_legacy_improvements(apply)
     }
 
     pub fn register_tool(&self, input: ToolRegisterInput) -> crate::infrastructure::Result<()> {

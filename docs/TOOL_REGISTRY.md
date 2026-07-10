@@ -165,6 +165,8 @@ without parsing the human table.
 | `decision verify` | Verification | Run one decision verification command. | decision id |
 | `backlog add` | Entropy auditing | Record a harness improvement proposal. | `--title`, optional pain/suggestion/risk/predicted fields |
 | `backlog close` | Entropy auditing | Close a backlog item with outcome evidence. | `--id`, optional `--status`, `--outcome` |
+| `backlog reconcile` | Entropy auditing | Preview or apply conservative legacy lifecycle identity backfill. | `--action backfill-lifecycle-identity`, exactly one of `--dry-run` or `--apply` |
+| `backlog outcome record` | Entropy auditing | Append a measured outcome to an implemented keyed occurrence. | `--id`, `--status`, `--outcome`, optional `--evidence` |
 | `tool register` | Tool access | Register an external project tool. | `--name`, `--command`, `--description`, `--responsibility`, optional `--kind`, `--capability`, `--scan`, `--args`, `--force` |
 | `tool check` | Tool access | Scan registered tools and persist present/missing/unknown status. | optional `--name`, `--json` |
 | `tool remove` | Tool access | Remove a registered external tool. | `--name` |

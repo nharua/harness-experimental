@@ -2,7 +2,7 @@
 
 ## Status
 
-in_progress — `US-073` through `US-079` implemented; `US-080` remains planned.
+implemented — `US-073` through `US-080` are implemented with replayable proof.
 
 ## Intake
 

@@ -412,6 +412,19 @@ pub fn compiled_tool_registry() -> Vec<ToolEntry> {
         ),
         tool(
             "harness-cli",
+            "backlog reconcile",
+            "backlog reconcile",
+            "Preview or apply conservative legacy lifecycle identity backfill.",
+            &[
+                ("action", "enum", true),
+                ("dry-run", "flag", false),
+                ("apply", "flag", false),
+            ],
+            "Entropy auditing",
+            "0.1.11",
+        ),
+        tool(
+            "harness-cli",
             "backlog outcome record",
             "backlog outcome record",
             "Append measured impact for an implemented improvement occurrence.",
@@ -1152,7 +1165,7 @@ impl AuditResult {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProposalEvidence {
     pub source_kind: String,
     pub uid: String,
@@ -1160,7 +1173,7 @@ pub struct ProposalEvidence {
     pub observed_at: String,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImprovementProposal {
     pub key: String,
     pub lifecycle_state: String,
@@ -1347,6 +1360,23 @@ mod tests {
         assert!(uid[4..]
             .chars()
             .all(|character| character.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn compiled_registry_includes_legacy_reconciliation() {
+        let tool = compiled_tool_registry()
+            .into_iter()
+            .find(|tool| tool.name == "backlog reconcile")
+            .expect("backlog reconcile must be discoverable through query tools");
+        assert_eq!(tool.command, "backlog reconcile");
+        assert_eq!(tool.responsibility, "Entropy auditing");
+        assert_eq!(
+            tool.args
+                .iter()
+                .map(|argument| argument.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["action", "dry-run", "apply"]
+        );
     }
 
     fn trace_source() -> TraceScoreSource {

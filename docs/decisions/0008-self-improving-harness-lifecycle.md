@@ -8,11 +8,10 @@ Accepted
 
 ## Implementation Status
 
-Implemented through `US-078`: replay-safe identity, selective proposal
+Implemented through `US-080`: replay-safe identity, selective proposal
 decisions, story-to-backlog relationships, explicit proof-backed atomic
-completion, evidence suppression, and recurrence classification are live.
-`US-079` and `US-080` remain planned, so outcome observation, daily health, and
-legacy reconciliation are not yet current CLI behavior.
+completion, evidence suppression, recurrence classification, outcome health,
+and conservative legacy reconciliation are current CLI behavior.
 
 ## Context
 

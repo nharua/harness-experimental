@@ -37,5 +37,12 @@ git diff --check
 
 ## Acceptance Evidence
 
-Add exact before/after snapshots, trace counts, rebuild output, and installer
-upgrade output after implementation.
+- Focused reconciliation coverage proves dry-run leaves identity untouched;
+  apply reconciles two live-equivalent generated rows, captures four UID-less
+  evidence snapshots, preserves terminal fields, appends one neutral legacy
+  observation, and writes one operational trace.
+- Repeated apply reports zero changes and writes no second trace.
+- Changeset replay against deliberately offset local trace/intervention/backlog
+  ids produces the same two keyed rows, four snapshots, and one observation.
+- `scripts/validate-changeset-rebuild.sh` and the workspace validation ladder
+  provide repository-wide migration/replay proof.

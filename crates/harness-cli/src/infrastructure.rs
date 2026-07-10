@@ -16,9 +16,10 @@ use crate::application::{
     BacklogAddInput, BacklogCloseInput, BacklogOutcomeInput, BrownfieldImportResult,
     ChangesetApplyResult, DbRebuildResult, DecisionAddInput, DecisionVerifyResult, HarnessContext,
     ImprovementHealthItem, ImprovementHealthResult, InitResult, IntakeInput, InterventionAddInput,
-    InterventionFilter, MigrateResult, OutcomeObservationRecord, QueryTable, StoryAddInput,
-    StoryBacklogLinkInput, StoryBacklogLinkRecord, StoryCompleteResult, StoryDependencyInput,
-    StoryDependencyRecord, StoryUpdateInput, StoryVerifyResult, ToolRegisterInput, TraceInput,
+    InterventionFilter, LegacyReconcileRecord, LegacyReconcileResult, MigrateResult,
+    OutcomeObservationRecord, QueryTable, StoryAddInput, StoryBacklogLinkInput,
+    StoryBacklogLinkRecord, StoryCompleteResult, StoryDependencyInput, StoryDependencyRecord,
+    StoryUpdateInput, StoryVerifyResult, ToolRegisterInput, TraceInput,
 };
 use crate::domain::{
     compiled_tool_registry, normalize_token, proposal_key, score_context, score_trace, sha256_hex,
@@ -85,6 +86,8 @@ pub enum HarnessInfraError {
     BacklogOutcomeStatus,
     #[error("proposal decision: {0}")]
     ProposalDecision(String),
+    #[error("legacy reconciliation: {0}")]
+    LegacyReconciliation(String),
     #[error("trace '{0}' not found")]
     TraceNotFound(i64),
     #[error("no traces found")]
@@ -146,6 +149,7 @@ pub trait HarnessRepository {
         &self,
         input: BacklogOutcomeInput,
     ) -> Result<OutcomeObservationRecord>;
+    fn reconcile_legacy_improvements(&self, apply: bool) -> Result<LegacyReconcileResult>;
     fn register_tool(&self, input: ToolRegisterInput) -> Result<()>;
     fn remove_tool(&self, name: &str) -> Result<()>;
     fn check_tools(&self, name: Option<String>) -> Result<Vec<ToolCheckResult>>;
@@ -219,6 +223,32 @@ struct StoryCompletionWrite {
     closed_backlog_ids: Vec<i64>,
     already_closed_backlog_ids: Vec<i64>,
     referenced_backlog_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone)]
+struct LegacyBacklogRow {
+    id: i64,
+    title: String,
+    status: String,
+    actual_outcome: Option<String>,
+    legacy_payload: Value,
+}
+
+#[derive(Debug, Clone)]
+struct LegacyEvidenceCapture {
+    uid: String,
+    source_kind: String,
+    source_local_id: i64,
+    fingerprint: String,
+    canonical_payload: String,
+}
+
+#[derive(Debug, Clone)]
+struct LegacyReconcileCandidate {
+    row: LegacyBacklogRow,
+    record: LegacyReconcileRecord,
+    backlog_uid: Option<String>,
+    evidence: Vec<(ProposalEvidence, Option<LegacyEvidenceCapture>)>,
 }
 
 impl SqliteHarnessRepository {
@@ -943,6 +973,230 @@ impl HarnessRepository for SqliteHarnessRepository {
                         "notes": input.notes,
                     },
                 })],
+            ))
+        })
+    }
+
+    fn reconcile_legacy_improvements(&self, apply: bool) -> Result<LegacyReconcileResult> {
+        let proposals = self.propose(ProposalDecision::PreviewSuppressed)?.proposals;
+        let mut connection = self.open_existing()?;
+        let candidates = legacy_reconcile_candidates(&connection, &proposals)?;
+        let changed = candidates
+            .iter()
+            .filter(|candidate| candidate.backlog_uid.is_some())
+            .count();
+        let records = candidates
+            .iter()
+            .map(|candidate| candidate.record.clone())
+            .collect::<Vec<_>>();
+
+        if !apply {
+            return Ok(LegacyReconcileResult {
+                applied: false,
+                changed,
+                trace_id: None,
+                records,
+            });
+        }
+
+        self.with_logged_write(&mut connection, |transaction| {
+            let captured_at: String =
+                transaction.query_row("SELECT datetime('now');", [], |row| row.get(0))?;
+            let mut operations = Vec::new();
+            let mut applied = 0usize;
+
+            for candidate in &candidates {
+                let Some(backlog_uid) = candidate.backlog_uid.as_deref() else {
+                    continue;
+                };
+                let proposal_key = candidate
+                    .record
+                    .proposal_key
+                    .as_deref()
+                    .expect("derivable candidate has proposal key");
+                let updated = transaction.execute(
+                    "UPDATE backlog
+                     SET uid=?1, proposal_key=?2, occurrence_kind='original'
+                     WHERE id=?3 AND uid IS NULL AND proposal_key IS NULL
+                       AND occurrence_kind IS NULL;",
+                    params![backlog_uid, proposal_key, candidate.row.id],
+                )?;
+                if updated != 1 {
+                    return Err(HarnessInfraError::LegacyReconciliation(format!(
+                        "backlog #{} changed after classification; retry reconciliation",
+                        candidate.row.id
+                    )));
+                }
+
+                let mut evidence_operations = Vec::new();
+                for (evidence, capture) in &candidate.evidence {
+                    let (source_kind, evidence_uid, evidence_fingerprint, observed_at) =
+                        if let Some(capture) = capture {
+                            transaction.execute(
+                                "INSERT INTO legacy_evidence_snapshot
+                                    (uid, source_kind, source_local_id, evidence_fingerprint,
+                                     canonical_payload, captured_at)
+                                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                                 ON CONFLICT(source_kind, evidence_fingerprint) DO NOTHING;",
+                                params![
+                                    capture.uid,
+                                    capture.source_kind,
+                                    capture.source_local_id,
+                                    capture.fingerprint,
+                                    capture.canonical_payload,
+                                    captured_at,
+                                ],
+                            )?;
+                            let snapshot: (String, String) = transaction.query_row(
+                                "SELECT uid, captured_at FROM legacy_evidence_snapshot
+                                 WHERE source_kind=?1 AND evidence_fingerprint=?2;",
+                                params![capture.source_kind, capture.fingerprint],
+                                |row| Ok((row.get(0)?, row.get(1)?)),
+                            )?;
+                            operations.push(json!({
+                                "op": "legacy.evidence.capture",
+                                "version": 1,
+                                "uid": snapshot.0,
+                                "payload": {
+                                    "source_kind": capture.source_kind,
+                                    "source_local_id": capture.source_local_id,
+                                    "evidence_fingerprint": capture.fingerprint,
+                                    "canonical_payload": capture.canonical_payload,
+                                    "captured_at": snapshot.1,
+                                }
+                            }));
+                            (
+                                "legacy_snapshot".to_owned(),
+                                snapshot.0,
+                                capture.fingerprint.clone(),
+                                evidence.observed_at.clone(),
+                            )
+                        } else {
+                            (
+                                evidence.source_kind.clone(),
+                                evidence.uid.clone(),
+                                evidence.fingerprint.clone(),
+                                evidence.observed_at.clone(),
+                            )
+                        };
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO proposal_evidence_link
+                            (backlog_uid, source_kind, evidence_uid, evidence_fingerprint, observed_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5);",
+                        params![
+                            backlog_uid,
+                            source_kind,
+                            evidence_uid,
+                            evidence_fingerprint,
+                            observed_at
+                        ],
+                    )?;
+                    evidence_operations.push(json!({
+                        "source_kind": source_kind,
+                        "evidence_uid": evidence_uid,
+                        "evidence_fingerprint": evidence_fingerprint,
+                        "observed_at": observed_at,
+                    }));
+                }
+
+                operations.push(json!({
+                    "op": "backlog.legacy.reconcile",
+                    "version": 1,
+                    "uid": backlog_uid,
+                    "payload": {
+                        "title": candidate.row.title,
+                        "legacy_row": candidate.row.legacy_payload,
+                        "proposal_key": proposal_key,
+                        "occurrence_kind": "original",
+                        "evidence": evidence_operations,
+                    }
+                }));
+
+                if matches!(candidate.row.status.as_str(), "implemented" | "rejected") {
+                    if let Some(outcome) = candidate
+                        .row
+                        .actual_outcome
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                    {
+                        let observation_uid = stable_uid("obs", &format!("{backlog_uid}\0legacy"));
+                        transaction.execute(
+                            "INSERT OR IGNORE INTO backlog_outcome_observation
+                                (uid, backlog_uid, ordinal, status, outcome, evidence, observed_at)
+                             VALUES (?1, ?2, 1, 'legacy_recorded', ?3,
+                                     'migrated from backlog.actual_outcome', ?4);",
+                            params![observation_uid, backlog_uid, outcome, captured_at],
+                        )?;
+                        operations.push(json!({
+                            "op": "backlog.outcome.observe",
+                            "version": 1,
+                            "uid": observation_uid,
+                            "payload": {
+                                "backlog_uid": backlog_uid,
+                                "ordinal": 1,
+                                "status": "legacy_recorded",
+                                "outcome": outcome,
+                                "evidence": "migrated from backlog.actual_outcome",
+                                "observed_at": captured_at,
+                            }
+                        }));
+                    }
+                }
+                applied += 1;
+            }
+
+            let trace_id = if applied == 0 {
+                None
+            } else {
+                let trace_uid = Self::new_uid("trc", "legacy improvement reconciliation");
+                transaction.execute(
+                    "INSERT INTO trace
+                        (uid, created_at, task_summary, agent, actions_taken, files_changed,
+                         outcome, notes)
+                     VALUES (?1, ?2, ?3, 'harness-cli', ?4, ?5, 'completed', ?6);",
+                    params![
+                        trace_uid,
+                        captured_at,
+                        format!("Reconciled {applied} legacy improvement row(s)"),
+                        json!(["classified legacy improvements", "backfilled derivable lifecycle identity", "captured immutable legacy evidence"]).to_string(),
+                        json!(["harness durable legacy lifecycle metadata"]).to_string(),
+                        "Manual, ambiguous, and duplicate-candidate rows were left unchanged.",
+                    ],
+                )?;
+                let id = transaction.last_insert_rowid();
+                operations.push(json!({
+                    "op": "trace.add",
+                    "version": 2,
+                    "uid": trace_uid,
+                    "payload": {
+                        "created_at": captured_at,
+                        "task_summary": format!("Reconciled {applied} legacy improvement row(s)"),
+                        "intake_uid": null,
+                        "story_id": null,
+                        "agent": "harness-cli",
+                        "actions_taken": json!(["classified legacy improvements", "backfilled derivable lifecycle identity", "captured immutable legacy evidence"]).to_string(),
+                        "files_read": null,
+                        "files_changed": json!(["harness durable legacy lifecycle metadata"]).to_string(),
+                        "decisions_made": null,
+                        "errors": null,
+                        "outcome": "completed",
+                        "duration_seconds": null,
+                        "token_estimate": null,
+                        "harness_friction": null,
+                        "notes": "Manual, ambiguous, and duplicate-candidate rows were left unchanged.",
+                    }
+                }));
+                Some(id)
+            };
+
+            Ok((
+                LegacyReconcileResult {
+                    applied: true,
+                    changed: applied,
+                    trace_id,
+                    records,
+                },
+                operations,
             ))
         })
     }
@@ -3362,6 +3616,273 @@ fn parse_observation_schedule(value: &str) -> Result<(String, Option<String>, Op
     ))
 }
 
+fn legacy_reconcile_candidates(
+    connection: &Connection,
+    proposals: &[ImprovementProposal],
+) -> Result<Vec<LegacyReconcileCandidate>> {
+    let mut statement = connection.prepare(
+        "SELECT id, title, status, actual_outcome,
+                json_object(
+                    'created_at', created_at,
+                    'title', title,
+                    'discovered_while', discovered_while,
+                    'current_pain', current_pain,
+                    'suggested_improvement', suggested_improvement,
+                    'risk', risk,
+                    'status', status,
+                    'predicted_impact', predicted_impact,
+                    'actual_outcome', actual_outcome,
+                    'implemented_at', implemented_at,
+                    'notes', notes,
+                    'accepted_at', accepted_at,
+                    'closed_at', closed_at,
+                    'resolution_evidence', resolution_evidence,
+                    'outcome_schedule_kind', outcome_schedule_kind,
+                    'outcome_due_at', outcome_due_at,
+                    'outcome_after_traces', outcome_after_traces,
+                    'outcome_baseline_trace_count', outcome_baseline_trace_count
+                )
+         FROM backlog
+         WHERE uid IS NULL AND proposal_key IS NULL
+         ORDER BY id;",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(LegacyBacklogRow {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            status: row.get(2)?,
+            actual_outcome: row.get(3)?,
+            legacy_payload: serde_json::from_str(&row.get::<_, String>(4)?).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    4,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?,
+        })
+    })?;
+    let legacy_rows = collect_rows(rows)?;
+    let mut candidates = Vec::new();
+
+    for row in &legacy_rows {
+        let matching = proposals
+            .iter()
+            .filter(|proposal| proposal.title == row.title)
+            .collect::<Vec<_>>();
+        if matching.is_empty() {
+            candidates.push(legacy_candidate(
+                row,
+                "manual",
+                None,
+                "no exact generated proposal title matches this historical row",
+                "none",
+                Vec::new(),
+            ));
+            continue;
+        }
+        if matching.len() != 1 {
+            candidates.push(legacy_candidate(
+                row,
+                "ambiguous",
+                None,
+                "more than one generated proposal matches this historical row",
+                "none",
+                Vec::new(),
+            ));
+            continue;
+        }
+        let proposal = matching[0];
+        let same_title = legacy_rows
+            .iter()
+            .filter(|candidate| candidate.title == row.title)
+            .count();
+        let keyed_count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM backlog WHERE proposal_key=?1;",
+            params![proposal.key],
+            |query_row| query_row.get(0),
+        )?;
+        if same_title > 1 || keyed_count > 0 {
+            candidates.push(legacy_candidate(
+                row,
+                "duplicate_candidate",
+                Some(proposal.key.clone()),
+                "the issue identity already has another plausible occurrence; human canonical selection is required",
+                "none",
+                Vec::new(),
+            ));
+            continue;
+        }
+        if proposal.evidence_items.is_empty() {
+            candidates.push(legacy_candidate(
+                row,
+                "ambiguous",
+                Some(proposal.key.clone()),
+                "the generated proposal has no exact evidence item to preserve",
+                "none",
+                Vec::new(),
+            ));
+            continue;
+        }
+
+        let mut evidence = Vec::new();
+        let mut ambiguity = None;
+        for item in &proposal.evidence_items {
+            if item.source_kind != "legacy_snapshot" {
+                evidence.push((item.clone(), None));
+                continue;
+            }
+            match resolve_legacy_evidence_capture(connection, item)? {
+                Some(capture) => evidence.push((item.clone(), Some(capture))),
+                None => {
+                    ambiguity = Some(format!(
+                        "evidence {} at {} does not resolve to exactly one UID-less trace or intervention",
+                        item.fingerprint, item.observed_at
+                    ));
+                    break;
+                }
+            }
+        }
+        if let Some(reason) = ambiguity {
+            candidates.push(legacy_candidate(
+                row,
+                "ambiguous",
+                Some(proposal.key.clone()),
+                &reason,
+                "none",
+                Vec::new(),
+            ));
+            continue;
+        }
+
+        let snapshot_count = evidence
+            .iter()
+            .filter(|(_, capture)| capture.is_some())
+            .count();
+        let observation = matches!(row.status.as_str(), "implemented" | "rejected")
+            && row
+                .actual_outcome
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty());
+        let changes = format!(
+            "uid, proposal_key, occurrence_kind, evidence_links={}{}",
+            evidence.len(),
+            if observation {
+                ", legacy_recorded outcome"
+            } else {
+                ""
+            }
+        );
+        candidates.push(LegacyReconcileCandidate {
+            row: row.clone(),
+            record: LegacyReconcileRecord {
+                backlog_id: row.id,
+                classification: "derivable".to_owned(),
+                proposal_key: Some(proposal.key.clone()),
+                reason: format!(
+                    "one exact generated proposal and complete evidence resolve deterministically ({snapshot_count} embedded snapshot(s))"
+                ),
+                changes,
+            },
+            backlog_uid: Some(stable_uid("blg", &proposal.key)),
+            evidence,
+        });
+    }
+    Ok(candidates)
+}
+
+fn legacy_candidate(
+    row: &LegacyBacklogRow,
+    classification: &str,
+    proposal_key: Option<String>,
+    reason: &str,
+    changes: &str,
+    evidence: Vec<(ProposalEvidence, Option<LegacyEvidenceCapture>)>,
+) -> LegacyReconcileCandidate {
+    LegacyReconcileCandidate {
+        row: row.clone(),
+        record: LegacyReconcileRecord {
+            backlog_id: row.id,
+            classification: classification.to_owned(),
+            proposal_key,
+            reason: reason.to_owned(),
+            changes: changes.to_owned(),
+        },
+        backlog_uid: None,
+        evidence,
+    }
+}
+
+fn resolve_legacy_evidence_capture(
+    connection: &Connection,
+    evidence: &ProposalEvidence,
+) -> Result<Option<LegacyEvidenceCapture>> {
+    let mut matches = Vec::new();
+    {
+        let mut statement = connection.prepare(
+            "SELECT id, created_at, harness_friction FROM trace
+             WHERE uid IS NULL AND harness_friction IS NOT NULL AND created_at=?1;",
+        )?;
+        let rows = statement.query_map(params![evidence.observed_at], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        for (id, created_at, text) in collect_rows(rows)? {
+            if sha256_hex(&text) == evidence.fingerprint {
+                let canonical_payload = json!({
+                    "created_at": created_at,
+                    "harness_friction": text,
+                })
+                .to_string();
+                let fingerprint = sha256_hex(&canonical_payload);
+                matches.push(LegacyEvidenceCapture {
+                    uid: stable_uid("leg", &format!("trace\0{fingerprint}")),
+                    source_kind: "trace".to_owned(),
+                    source_local_id: id,
+                    fingerprint,
+                    canonical_payload,
+                });
+            }
+        }
+    }
+    {
+        let mut statement = connection.prepare(
+            "SELECT id, created_at, type, description FROM intervention
+             WHERE uid IS NULL AND created_at=?1;",
+        )?;
+        let rows = statement.query_map(params![evidence.observed_at], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        for (id, created_at, intervention_type, description) in collect_rows(rows)? {
+            let text = format!("{intervention_type}: {description}");
+            if sha256_hex(&text) == evidence.fingerprint {
+                let canonical_payload = json!({
+                    "created_at": created_at,
+                    "description": description,
+                    "type": intervention_type,
+                })
+                .to_string();
+                let fingerprint = sha256_hex(&canonical_payload);
+                matches.push(LegacyEvidenceCapture {
+                    uid: stable_uid("leg", &format!("intervention\0{fingerprint}")),
+                    source_kind: "intervention".to_owned(),
+                    source_local_id: id,
+                    fingerprint,
+                    canonical_payload,
+                });
+            }
+        }
+    }
+    Ok((matches.len() == 1).then(|| matches.remove(0)))
+}
+
 fn record_proposal_evidence(
     transaction: &Transaction<'_>,
     backlog_uid: &str,
@@ -3932,6 +4453,125 @@ fn apply_changeset_operation(
                 "UPDATE backlog SET status='implemented', implemented_at=datetime('now'), closed_at=datetime('now'), resolution_evidence=COALESCE(resolution_evidence, ?1), outcome_baseline_trace_count=COALESCE(?2, outcome_baseline_trace_count) WHERE uid=?3;",
                 params![evidence, baseline, uid],
             )?
+        }
+        "legacy.evidence.capture" => {
+            let uid = required_uid(operation, "uid", "leg")?;
+            let source_kind = required_string(payload, "source_kind")?;
+            if !matches!(source_kind.as_str(), "trace" | "intervention") {
+                return Err(HarnessInfraError::InvalidChangeset(
+                    "legacy evidence source_kind must be trace or intervention".to_owned(),
+                ));
+            }
+            transaction.execute(
+                "INSERT INTO legacy_evidence_snapshot
+                    (uid, source_kind, source_local_id, evidence_fingerprint,
+                     canonical_payload, captured_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(source_kind, evidence_fingerprint) DO NOTHING;",
+                params![
+                    uid,
+                    source_kind,
+                    optional_i64(payload, "source_local_id"),
+                    required_string(payload, "evidence_fingerprint")?,
+                    required_string(payload, "canonical_payload")?,
+                    required_string(payload, "captured_at")?,
+                ],
+            )?
+        }
+        "backlog.legacy.reconcile" => {
+            let uid = required_uid(operation, "uid", "blg")?;
+            let title = required_string(payload, "title")?;
+            let existing: Option<i64> = transaction
+                .query_row("SELECT id FROM backlog WHERE uid=?1;", params![uid], |row| {
+                    row.get(0)
+                })
+                .optional()?;
+            if existing.is_none() {
+                let ids = {
+                    let mut statement = transaction.prepare(
+                        "SELECT id FROM backlog
+                         WHERE title=?1 AND uid IS NULL AND proposal_key IS NULL
+                         ORDER BY id;",
+                    )?;
+                    let rows = statement.query_map(params![title], |row| row.get::<_, i64>(0))?;
+                    collect_rows(rows)?
+                };
+                if ids.len() > 1 {
+                    return Err(HarnessInfraError::InvalidChangeset(format!(
+                        "legacy reconciliation expected at most one unkeyed row titled '{title}', found {}",
+                        ids.len()
+                    )));
+                }
+                if let Some(id) = ids.first() {
+                    transaction.execute(
+                        "UPDATE backlog SET uid=?1, proposal_key=?2, occurrence_kind=?3
+                         WHERE id=?4 AND uid IS NULL AND proposal_key IS NULL;",
+                        params![
+                            uid,
+                            required_string(payload, "proposal_key")?,
+                            required_string(payload, "occurrence_kind")?,
+                            id
+                        ],
+                    )?;
+                } else {
+                    let legacy = payload.get("legacy_row").ok_or_else(|| {
+                        HarnessInfraError::InvalidChangeset(
+                            "legacy reconciliation cannot reconstruct a missing row without legacy_row"
+                                .to_owned(),
+                        )
+                    })?;
+                    transaction.execute(
+                        "INSERT INTO backlog
+                            (uid, proposal_key, occurrence_kind, created_at, title,
+                             discovered_while, current_pain, suggested_improvement, risk, status,
+                             predicted_impact, actual_outcome, implemented_at, notes, accepted_at,
+                             closed_at, resolution_evidence, outcome_schedule_kind, outcome_due_at,
+                             outcome_after_traces, outcome_baseline_trace_count)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                                 ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21);",
+                        params![
+                            uid,
+                            required_string(payload, "proposal_key")?,
+                            required_string(payload, "occurrence_kind")?,
+                            required_string(legacy, "created_at")?,
+                            required_string(legacy, "title")?,
+                            optional_string(legacy, "discovered_while"),
+                            optional_string(legacy, "current_pain"),
+                            optional_string(legacy, "suggested_improvement"),
+                            optional_string(legacy, "risk"),
+                            required_string(legacy, "status")?,
+                            optional_string(legacy, "predicted_impact"),
+                            optional_string(legacy, "actual_outcome"),
+                            optional_string(legacy, "implemented_at"),
+                            optional_string(legacy, "notes"),
+                            optional_string(legacy, "accepted_at"),
+                            optional_string(legacy, "closed_at"),
+                            optional_string(legacy, "resolution_evidence"),
+                            optional_string(legacy, "outcome_schedule_kind"),
+                            optional_string(legacy, "outcome_due_at"),
+                            optional_i64(legacy, "outcome_after_traces"),
+                            optional_i64(legacy, "outcome_baseline_trace_count"),
+                        ],
+                    )?;
+                }
+            }
+            if let Some(evidence) = payload.get("evidence").and_then(Value::as_array) {
+                for item in evidence {
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO proposal_evidence_link
+                            (backlog_uid, source_kind, evidence_uid, evidence_fingerprint, observed_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5);",
+                        params![
+                            uid,
+                            required_string(item, "source_kind")?,
+                            required_string(item, "evidence_uid")?,
+                            required_string(item, "evidence_fingerprint")?,
+                            required_string(item, "observed_at")?,
+                        ],
+                    )?;
+                }
+            }
+            1
         }
         "backlog.outcome.observe" => {
             let uid = required_uid(operation, "uid", "obs")?;
@@ -4516,6 +5156,50 @@ mod tests {
             .unwrap();
     }
 
+    fn seed_legacy_reconciliation_fixture(repository: &SqliteHarnessRepository, offset_ids: bool) {
+        let connection = repository.open_existing().unwrap();
+        if offset_ids {
+            connection
+                .execute("INSERT INTO trace (task_summary) VALUES ('offset');", [])
+                .unwrap();
+            connection.execute("INSERT INTO intervention (type, description, source) VALUES ('approval', 'offset', 'agent');", []).unwrap();
+            connection
+                .execute("INSERT INTO backlog (title) VALUES ('offset');", [])
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO trace (created_at, task_summary, harness_friction) VALUES
+                ('2026-01-01 00:00:01', 'legacy friction one', 'phase5 repeated smoke friction'),
+                ('2026-01-01 00:00:02', 'legacy friction two', 'phase5 repeated smoke friction');",
+                [],
+            )
+            .unwrap();
+        connection.execute(
+            "INSERT INTO intervention (created_at, type, description, source) VALUES
+                ('2026-01-01 00:00:03', 'correction', 'Use deterministic context scoring rules', 'human'),
+                ('2026-01-01 00:00:04', 'correction', 'Use deterministic context scoring rules', 'human');",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO backlog (created_at, title, status, notes) VALUES
+                ('2026-01-01 00:00:05', 'Reduce repeated friction: phase5 repeated smoke friction', 'proposed', 'legacy generated row');",
+            [],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO backlog (created_at, title, status, actual_outcome, implemented_at, notes) VALUES
+                ('2026-01-01 00:00:06', 'Address repeated intervention: correction: Use deterministic context scoring rules', 'implemented', 'Kept the original legacy result', '2026-01-02 00:00:00', 'legacy generated terminal row');",
+            [],
+        ).unwrap();
+        connection
+            .execute(
+                "INSERT INTO backlog (created_at, title, status) VALUES
+                ('2026-01-01 00:00:07', 'Manual improvement with similar wording', 'proposed');",
+                [],
+            )
+            .unwrap();
+    }
+
     fn add_completion_story(
         repository: &SqliteHarnessRepository,
         id: &str,
@@ -4581,7 +5265,7 @@ mod tests {
         assert_eq!(repository.query_stats().unwrap().intakes, 0);
         let connection = repository.open_existing().unwrap();
         let schema_version = SqliteHarnessRepository::schema_version(&connection).unwrap();
-        assert_eq!(schema_version, 10);
+        assert_eq!(schema_version, 11);
         let story_columns = story_columns(&connection);
         assert!(story_columns.contains(&"verify_command".to_owned()));
         assert!(story_columns.contains(&"last_verified_at".to_owned()));
@@ -4602,6 +5286,187 @@ mod tests {
             )
             .is_ok();
         assert!(hierarchy_table_exists);
+    }
+
+    #[test]
+    fn legacy_proposal_reconciliation_migrates_an_existing_v10_database() {
+        let (_temp_dir, repository) = test_repository();
+        repository.init().unwrap();
+        let connection = repository.open_existing().unwrap();
+        connection
+            .execute_batch(
+                "DROP TABLE legacy_evidence_snapshot;
+                 DELETE FROM schema_version WHERE version=11;",
+            )
+            .unwrap();
+        drop(connection);
+
+        let result = repository.migrate().unwrap();
+        assert_eq!(result.applied, vec![11]);
+        let connection = repository.open_existing().unwrap();
+        assert_eq!(
+            SqliteHarnessRepository::schema_version(&connection).unwrap(),
+            11
+        );
+        assert!(connection
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_evidence_snapshot';",
+                [],
+                |_| Ok(())
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn legacy_proposal_reconciliation_is_conservative_replayable_and_idempotent() {
+        let (_temp_dir, repository) = isolated_test_repository();
+        let repository = repository.with_run_id("run_legacy_reconciliation");
+        repository.init().unwrap();
+        seed_legacy_reconciliation_fixture(&repository, false);
+
+        let changeset = repository.changeset_path("run_legacy_reconciliation");
+        let dry_run = repository.reconcile_legacy_improvements(false).unwrap();
+        assert!(!dry_run.applied);
+        assert_eq!(dry_run.changed, 2);
+        assert_eq!(
+            dry_run
+                .records
+                .iter()
+                .map(|record| record.classification.as_str())
+                .collect::<Vec<_>>(),
+            vec!["derivable", "derivable", "manual"]
+        );
+        assert!(!changeset.exists());
+        let connection = repository.open_existing().unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM backlog WHERE proposal_key IS NOT NULL;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        drop(connection);
+
+        let applied = repository.reconcile_legacy_improvements(true).unwrap();
+        assert!(applied.applied);
+        assert_eq!(applied.changed, 2);
+        assert!(applied.trace_id.is_some());
+        let connection = repository.open_existing().unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM legacy_evidence_snapshot;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            4
+        );
+        assert_eq!(
+            connection.query_row("SELECT COUNT(*) FROM proposal_evidence_link WHERE source_kind='legacy_snapshot';", [], |row| row.get::<_, i64>(0)).unwrap(),
+            4
+        );
+        assert_eq!(
+            connection.query_row("SELECT COUNT(*) FROM backlog_outcome_observation WHERE status='legacy_recorded' AND outcome='Kept the original legacy result';", [], |row| row.get::<_, i64>(0)).unwrap(),
+            1
+        );
+        let terminal: (String, String, String) = connection.query_row(
+            "SELECT status, actual_outcome, implemented_at FROM backlog WHERE title='Address repeated intervention: correction: Use deterministic context scoring rules';",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).unwrap();
+        assert_eq!(
+            terminal,
+            (
+                "implemented".to_owned(),
+                "Kept the original legacy result".to_owned(),
+                "2026-01-02 00:00:00".to_owned()
+            )
+        );
+        let trace_count: i64 = connection.query_row("SELECT COUNT(*) FROM trace WHERE agent='harness-cli' AND task_summary LIKE 'Reconciled % legacy improvement row(s)';", [], |row| row.get(0)).unwrap();
+        assert_eq!(trace_count, 1);
+        drop(connection);
+
+        let no_op = repository.reconcile_legacy_improvements(true).unwrap();
+        assert_eq!(no_op.changed, 0);
+        assert!(no_op.trace_id.is_none());
+        assert_eq!(
+            repository.open_existing().unwrap().query_row("SELECT COUNT(*) FROM trace WHERE agent='harness-cli' AND task_summary LIKE 'Reconciled % legacy improvement row(s)';", [], |row| row.get::<_, i64>(0)).unwrap(),
+            1
+        );
+
+        let replay_temp = tempfile::tempdir().unwrap();
+        let replay_root = replay_temp.path().join("repo");
+        fs::create_dir_all(&replay_root).unwrap();
+        let replay = SqliteHarnessRepository::new(
+            replay_root.clone(),
+            replay_root.join("harness.db"),
+            repository.schema_dir.clone(),
+        );
+        replay.init().unwrap();
+        seed_legacy_reconciliation_fixture(&replay, true);
+        let replay_result = replay.apply_changeset(&changeset).unwrap();
+        assert!(replay_result.applied);
+        let replay_connection = replay.open_existing().unwrap();
+        assert_eq!(
+            replay_connection
+                .query_row(
+                    "SELECT COUNT(*) FROM backlog WHERE proposal_key IS NOT NULL;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            replay_connection
+                .query_row(
+                    "SELECT COUNT(*) FROM legacy_evidence_snapshot;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            4
+        );
+        assert_eq!(
+            replay_connection.query_row("SELECT COUNT(*) FROM backlog_outcome_observation WHERE status='legacy_recorded';", [], |row| row.get::<_, i64>(0)).unwrap(),
+            1
+        );
+
+        let fresh_temp = tempfile::tempdir().unwrap();
+        let fresh_root = fresh_temp.path().join("repo");
+        fs::create_dir_all(&fresh_root).unwrap();
+        let fresh = SqliteHarnessRepository::new(
+            fresh_root.clone(),
+            fresh_root.join("harness.db"),
+            repository.schema_dir.clone(),
+        );
+        fresh.init().unwrap();
+        assert!(fresh.apply_changeset(&changeset).unwrap().applied);
+        let fresh_connection = fresh.open_existing().unwrap();
+        assert_eq!(
+            fresh_connection
+                .query_row(
+                    "SELECT COUNT(*) FROM backlog WHERE proposal_key IS NOT NULL;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            fresh_connection
+                .query_row(
+                    "SELECT COUNT(*) FROM legacy_evidence_snapshot;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            4
+        );
     }
 
     #[test]
@@ -4640,7 +5505,7 @@ mod tests {
         let header: Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(header["op"], "changeset.header");
         assert_eq!(header["run_id"], "run_test");
-        assert_eq!(header["base_schema_version"], 10);
+        assert_eq!(header["base_schema_version"], 11);
         let operation: Value = serde_json::from_str(lines[1]).unwrap();
         assert_eq!(operation["op"], "intake.add");
         assert_eq!(operation["payload"]["summary"], "Logged write test");
@@ -5016,7 +5881,7 @@ mod tests {
         let connection = repository.open_existing().unwrap();
         assert_eq!(
             SqliteHarnessRepository::schema_version(&connection).unwrap(),
-            10
+            11
         );
         let applied = connection
             .query_row(
@@ -5127,11 +5992,11 @@ mod tests {
         let result = repository.migrate().unwrap();
 
         assert_eq!(result.current_version, 1);
-        assert_eq!(result.applied, vec![2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(result.applied, vec![2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
         let connection = repository.open_existing().unwrap();
         assert_eq!(
             SqliteHarnessRepository::schema_version(&connection).unwrap(),
-            10
+            11
         );
         let story_columns = story_columns(&connection);
         assert!(story_columns.contains(&"verify_command".to_owned()));
@@ -5183,7 +6048,7 @@ mod tests {
         // Upgrade: migration 005 must infer kind from the command prefix.
         assert_eq!(
             repository.migrate().unwrap().applied,
-            vec![5, 6, 7, 8, 9, 10]
+            vec![5, 6, 7, 8, 9, 10, 11]
         );
         let connection = repository.open_existing().unwrap();
         let kind_of = |name: &str| -> String {

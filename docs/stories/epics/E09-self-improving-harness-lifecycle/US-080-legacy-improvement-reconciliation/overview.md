@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -83,3 +83,14 @@ never deleted or rewritten.
   timestamp cannot be recovered.
 - Do not delete or merge traces, interventions, friction, stories, or backlog
   history.
+
+## Implementation Evidence
+
+- Added schema migration `011-legacy-evidence-snapshots.sql` with immutable,
+  fingerprint-deduplicated embedded evidence.
+- Added explicit dry-run/apply reconciliation with conservative classification
+  and derivable-only mutation.
+- Added replay support that uses embedded evidence instead of replay-local
+  trace/intervention ids.
+- Added focused live-equivalent #6/#7, terminal-outcome, no-op, and offset-id
+  replay coverage under `legacy_proposal_reconciliation`.

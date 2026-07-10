@@ -9,8 +9,8 @@ use crate::application::{
     BacklogAddInput, BacklogCloseInput, BacklogOutcomeInput, BrownfieldImportResult,
     ChangesetApplyResult, DbRebuildResult, DecisionAddInput, HarnessContext, HarnessService,
     ImprovementHealthResult, InitResult, IntakeInput, InterventionAddInput, InterventionFilter,
-    MigrateResult, QueryTable, StoryAddInput, StoryBacklogLinkInput, StoryDependencyInput,
-    StoryUpdateInput, ToolRegisterInput, TraceInput,
+    LegacyReconcileResult, MigrateResult, QueryTable, StoryAddInput, StoryBacklogLinkInput,
+    StoryDependencyInput, StoryUpdateInput, ToolRegisterInput, TraceInput,
 };
 use crate::domain::{
     normalize_capability, parse_optional_integer, parse_tool_args, proof_display,
@@ -280,6 +280,18 @@ enum BacklogAction {
     Close(BacklogCloseArgs),
     /// Append a measured outcome for an implemented improvement occurrence.
     Outcome(BacklogOutcomeArgs),
+    /// Preview or apply conservative legacy lifecycle identity backfill.
+    Reconcile(BacklogReconcileArgs),
+}
+
+#[derive(Args, Debug)]
+struct BacklogReconcileArgs {
+    #[arg(long, value_parser = ["backfill-lifecycle-identity"])]
+    action: String,
+    #[arg(long, conflicts_with = "apply")]
+    dry_run: bool,
+    #[arg(long, conflicts_with = "dry_run")]
+    apply: bool,
 }
 
 #[derive(Args, Debug)]
@@ -845,6 +857,15 @@ pub fn run(cli: Cli) -> Result<(), InterfaceError> {
                     );
                 }
             },
+            BacklogAction::Reconcile(args) => {
+                if !args.dry_run && !args.apply {
+                    return Err(InterfaceError::InvalidArgument(
+                        "backlog reconcile requires exactly one of --dry-run or --apply".to_owned(),
+                    ));
+                }
+                debug_assert_eq!(args.action, "backfill-lifecycle-identity");
+                print_legacy_reconcile(&service.reconcile_legacy_improvements(args.apply)?);
+            }
         },
         Command::Tool(args) => match args.action {
             ToolAction::Register(args) => {
@@ -1468,6 +1489,41 @@ fn print_backlog(records: &[BacklogRecord]) {
     );
 }
 
+fn print_legacy_reconcile(result: &LegacyReconcileResult) {
+    let rows = result
+        .records
+        .iter()
+        .map(|record| {
+            vec![
+                record.backlog_id.to_string(),
+                record.classification.clone(),
+                record.proposal_key.clone().unwrap_or_default(),
+                record.changes.clone(),
+                record.reason.clone(),
+            ]
+        })
+        .collect::<Vec<_>>();
+    print_table(
+        &[
+            "backlog",
+            "classification",
+            "proposal_key",
+            "changes",
+            "reason",
+        ],
+        &rows,
+    );
+    println!(
+        "Legacy reconciliation: mode={}, changed={}, trace={}",
+        if result.applied { "apply" } else { "dry-run" },
+        result.changed,
+        result
+            .trace_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "none".to_owned())
+    );
+}
+
 fn print_decisions(records: &[DecisionRecord]) {
     let rows = records
         .iter()
@@ -1923,6 +1979,39 @@ mod tests {
                 view: QueryView::ImprovementHealth
             })
         ));
+    }
+
+    #[test]
+    fn legacy_reconciliation_command_requires_an_explicit_mode() {
+        let cli = Cli::try_parse_from([
+            "harness-cli",
+            "backlog",
+            "reconcile",
+            "--action",
+            "backfill-lifecycle-identity",
+            "--dry-run",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Backlog(BacklogArgs {
+                action: BacklogAction::Reconcile(BacklogReconcileArgs {
+                    dry_run: true,
+                    apply: false,
+                    ..
+                })
+            })
+        ));
+        assert!(Cli::try_parse_from([
+            "harness-cli",
+            "backlog",
+            "reconcile",
+            "--action",
+            "backfill-lifecycle-identity",
+            "--dry-run",
+            "--apply",
+        ])
+        .is_err());
     }
 
     #[test]

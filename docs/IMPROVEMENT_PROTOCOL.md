@@ -50,7 +50,31 @@ scripts/bin/harness-cli propose --show-suppressed
 
 The explanation includes the terminal occurrence, resolver, closure proof, and
 why no evidence remains uncovered. Plausible unkeyed legacy matches are reported
-as `legacy-unclassified` and left for explicit US-080 reconciliation.
+as `legacy-unclassified` until an operator runs explicit reconciliation.
+
+## Reconcile Legacy Improvements
+
+Preview every unkeyed historical improvement before changing it:
+
+```bash
+scripts/bin/harness-cli backlog reconcile \
+  --action backfill-lifecycle-identity --dry-run
+```
+
+The report labels each row `derivable`, `manual`, `ambiguous`, or
+`duplicate_candidate`. Only `derivable` rows are eligible for explicit apply:
+
+```bash
+scripts/bin/harness-cli backlog reconcile \
+  --action backfill-lifecycle-identity --apply
+```
+
+Apply fills only missing lifecycle identity, embeds immutable snapshots for
+UID-less trace/intervention evidence, and preserves terminal status, timestamps,
+raw evidence, and `actual_outcome`. A nonblank legacy terminal outcome is copied
+once into a neutral append-only `legacy_recorded` observation; it is not measured
+confirmation. Repeating apply is a no-op. Manual, ambiguous, and duplicate
+candidates require human selection and remain unchanged.
 
 ## Decide One Proposal
 

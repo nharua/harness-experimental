@@ -173,13 +173,13 @@ To upgrade a CLI explicitly, pin one immutable tag for both the template files
 and release artifact:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/hoangnb24/repository-harness/harness-cli-v0.1.12/scripts/install-harness.sh" |
-  bash -s -- --merge --upgrade-cli --ref harness-cli-v0.1.12 --yes
+curl -fsSL "https://raw.githubusercontent.com/hoangnb24/repository-harness/harness-cli-v0.1.13/scripts/install-harness.sh" |
+  bash -s -- --merge --upgrade-cli --ref harness-cli-v0.1.13 --yes
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm "https://raw.githubusercontent.com/hoangnb24/repository-harness/harness-cli-v0.1.12/scripts/install-harness.ps1"))) `
-  -Merge -UpgradeCli -Ref harness-cli-v0.1.12 -Yes
+& ([scriptblock]::Create((irm "https://raw.githubusercontent.com/hoangnb24/repository-harness/harness-cli-v0.1.13/scripts/install-harness.ps1"))) `
+  -Merge -UpgradeCli -Ref harness-cli-v0.1.13 -Yes
 ```
 
 The installer rejects branch names and `latest`, downloads the tagged template

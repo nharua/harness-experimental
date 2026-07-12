@@ -36,6 +36,7 @@ exact	scripts/verify-e11-us099.sh	migration_plan	active core regression verifier
 exact	scripts/verify-e11-us100.sh	migration_plan	active cutover verifier
 exact	tests/cutover/released-cross-repo-smoke.sh	migration_plan	released product compatibility fixture
 exact	tests/cutover/assert-canonical-symphony-ownership.sh	migration_plan	canonical target ownership verifier
+exact	tests/cutover/audit-us100-runtime-disposition.sh	migration_plan	archived runtime cleanup verifier
 exact	tests/cutover/test-canonical-symphony-ownership.sh	migration_plan	canonical target ownership negative fixtures
 exact	tests/cutover/test-us100-readiness-schema.sh	migration_plan	cutover readiness negative fixtures
 exact	tests/cutover/test-us100-verifier-negative.sh	migration_plan	cutover evidence negative fixtures

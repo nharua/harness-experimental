@@ -17,7 +17,6 @@ $CandidateHash = (Get-FileHash -Algorithm SHA256 $CandidateArtifact).Hash.ToLowe
 "$CandidateHash  $AssetName" | Set-Content -Encoding ascii (Join-Path $Assets "$AssetName.sha256")
 $env:HARNESS_CLI_BASE_URL = ([uri](Resolve-Path $Assets).Path).AbsoluteUri.TrimEnd("/")
 $env:HARNESS_CLI_PLATFORM = "windows-x64"
-$env:HARNESS_CLI_RELEASE_TAG = "harness-cli-v0.1.14"
 
 function Invoke-Install([string]$Directory, [string[]]$Mode = @()) {
     & $Installer -Directory $Directory -Yes @Mode | Out-Null
@@ -87,7 +86,6 @@ try {
 finally {
     Remove-Item Env:HARNESS_CLI_BASE_URL -ErrorAction SilentlyContinue
     Remove-Item Env:HARNESS_CLI_PLATFORM -ErrorAction SilentlyContinue
-    Remove-Item Env:HARNESS_CLI_RELEASE_TAG -ErrorAction SilentlyContinue
     Remove-Item Env:HARNESS_SOURCE_BASE_URL -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $Temp -ErrorAction SilentlyContinue
 }

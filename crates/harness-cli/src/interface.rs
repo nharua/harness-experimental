@@ -263,6 +263,8 @@ struct StoryUpdateArgs {
     #[arg(long)]
     id: String,
     #[arg(long)]
+    contract: Option<String>,
+    #[arg(long)]
     status: Option<String>,
     #[arg(long)]
     evidence: Option<String>,
@@ -989,7 +991,8 @@ pub fn run(cli: Cli) -> Result<(), InterfaceError> {
             }
             StoryAction::Update(args) => {
                 if args.json {
-                    if args.evidence.is_some()
+                    if args.contract.is_some()
+                        || args.evidence.is_some()
                         || args.unit.is_some()
                         || args.integration.is_some()
                         || args.e2e.is_some()
@@ -997,7 +1000,7 @@ pub fn run(cli: Cli) -> Result<(), InterfaceError> {
                         || args.verify.is_some()
                     {
                         return Err(InterfaceError::InvalidArgument(
-                            "story update --json is a status CAS operation and cannot combine proof/evidence/verify fields".to_owned(),
+                            "story update --json is a status CAS operation and cannot combine contract/proof/evidence/verify fields".to_owned(),
                         ));
                     }
                     let status = args.status.ok_or_else(|| {
@@ -1025,6 +1028,7 @@ pub fn run(cli: Cli) -> Result<(), InterfaceError> {
                     }
                     service.update_story(StoryUpdateInput {
                         id: args.id.clone(),
+                        contract_doc: args.contract,
                         status: args.status,
                         evidence: args.evidence,
                         unit: parse_optional_bool("story update: --unit", args.unit)?,

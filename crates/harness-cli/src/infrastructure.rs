@@ -1435,7 +1435,8 @@ impl HarnessRepository for SqliteHarnessRepository {
     }
 
     fn update_story(&self, input: StoryUpdateInput) -> Result<()> {
-        if input.status.is_none()
+        if input.contract_doc.is_none()
+            && input.status.is_none()
             && input.evidence.is_none()
             && input.unit.is_none()
             && input.integration.is_none()
@@ -1454,15 +1455,17 @@ impl HarnessRepository for SqliteHarnessRepository {
             let platform = input.platform.map(|value| value.0);
             transaction.execute(
                 "UPDATE story SET
-                    status=COALESCE(?1, status),
-                    evidence=COALESCE(?2, evidence),
-                    unit_proof=COALESCE(?3, unit_proof),
-                    integration_proof=COALESCE(?4, integration_proof),
-                    e2e_proof=COALESCE(?5, e2e_proof),
-                    platform_proof=COALESCE(?6, platform_proof),
-                    verify_command=COALESCE(?7, verify_command)
-                 WHERE id=?8;",
+                    contract_doc=COALESCE(?1, contract_doc),
+                    status=COALESCE(?2, status),
+                    evidence=COALESCE(?3, evidence),
+                    unit_proof=COALESCE(?4, unit_proof),
+                    integration_proof=COALESCE(?5, integration_proof),
+                    e2e_proof=COALESCE(?6, e2e_proof),
+                    platform_proof=COALESCE(?7, platform_proof),
+                    verify_command=COALESCE(?8, verify_command)
+                 WHERE id=?9;",
                 params![
+                    input.contract_doc,
                     input.status,
                     input.evidence,
                     unit,
@@ -1484,6 +1487,7 @@ impl HarnessRepository for SqliteHarnessRepository {
                     "version": 1,
                     "id": input.id,
                     "payload": {
+                        "contract_doc": input.contract_doc,
                         "status": input.status,
                         "evidence": input.evidence,
                         "unit_proof": unit,
@@ -4993,15 +4997,17 @@ fn apply_changeset_operation(
         )?,
         "story.update" => transaction.execute(
             "UPDATE story SET
-                status=COALESCE(?1, status),
-                evidence=COALESCE(?2, evidence),
-                unit_proof=COALESCE(?3, unit_proof),
-                integration_proof=COALESCE(?4, integration_proof),
-                e2e_proof=COALESCE(?5, e2e_proof),
-                platform_proof=COALESCE(?6, platform_proof),
-                verify_command=COALESCE(?7, verify_command)
-             WHERE id=?8;",
+                contract_doc=COALESCE(?1, contract_doc),
+                status=COALESCE(?2, status),
+                evidence=COALESCE(?3, evidence),
+                unit_proof=COALESCE(?4, unit_proof),
+                integration_proof=COALESCE(?5, integration_proof),
+                e2e_proof=COALESCE(?6, e2e_proof),
+                platform_proof=COALESCE(?7, platform_proof),
+                verify_command=COALESCE(?8, verify_command)
+             WHERE id=?9;",
             params![
+                optional_string(payload, "contract_doc"),
                 optional_string(payload, "status"),
                 optional_string(payload, "evidence"),
                 optional_i64(payload, "unit_proof"),
@@ -6003,6 +6009,7 @@ mod tests {
         repository
             .update_story(StoryUpdateInput {
                 id: id.to_owned(),
+                contract_doc: None,
                 status: Some("in_progress".to_owned()),
                 evidence: None,
                 unit: None,
@@ -6660,7 +6667,7 @@ mod tests {
             r#"{"op":"changeset.header","version":1,"run_id":"run_apply","base_schema_version":6}
 {"op":"intake.add","version":1,"id":10,"payload":{"input_type":"harness_improvement","summary":"Apply changeset intake","risk_lane":"normal","risk_flags":null,"affected_docs":null,"story_id":null,"notes":null}}
 {"op":"story.add","version":1,"id":"US-APPLY","payload":{"title":"Apply changeset story","risk_lane":"normal","contract_doc":null,"verify_command":null,"notes":null}}
-{"op":"story.update","version":1,"id":"US-APPLY","payload":{"status":"implemented","evidence":"applied","unit_proof":1,"integration_proof":null,"e2e_proof":null,"platform_proof":null,"verify_command":null}}
+{"op":"story.update","version":1,"id":"US-APPLY","payload":{"contract_doc":"docs/product/replay.md","status":"implemented","evidence":"applied","unit_proof":1,"integration_proof":null,"e2e_proof":null,"platform_proof":null,"verify_command":null}}
 "#,
         )
         .unwrap();
@@ -6674,12 +6681,15 @@ mod tests {
         assert_eq!(second.operations, 0);
 
         let connection = repository.open_existing().unwrap();
-        let status = connection
-            .query_row("SELECT status FROM story WHERE id='US-APPLY';", [], |row| {
-                row.get::<_, String>(0)
-            })
+        let (status, contract_doc) = connection
+            .query_row(
+                "SELECT status, contract_doc FROM story WHERE id='US-APPLY';",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
             .unwrap();
         assert_eq!(status, "implemented");
+        assert_eq!(contract_doc, "docs/product/replay.md");
         let applied = connection
             .query_row(
                 "SELECT COUNT(*) FROM changeset_applied WHERE id='run_apply';",
@@ -7074,6 +7084,7 @@ mod tests {
         repository
             .update_story(StoryUpdateInput {
                 id: "US-VERIFY".to_owned(),
+                contract_doc: Some("docs/product/updated.md".to_owned()),
                 status: None,
                 evidence: None,
                 unit: None,
@@ -7092,6 +7103,15 @@ mod tests {
                 .as_deref(),
             Some("npm test")
         );
+        let connection = repository.open_existing().unwrap();
+        let contract_doc = connection
+            .query_row(
+                "SELECT contract_doc FROM story WHERE id='US-VERIFY';",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap();
+        assert_eq!(contract_doc, "docs/product/updated.md");
     }
 
     #[test]
@@ -7117,6 +7137,7 @@ mod tests {
         repository
             .update_story(StoryUpdateInput {
                 id: "US-RETIRED".to_owned(),
+                contract_doc: None,
                 status: Some("retired".to_owned()),
                 evidence: None,
                 unit: None,
@@ -7247,6 +7268,7 @@ mod tests {
         repository
             .update_story(StoryUpdateInput {
                 id: "US-COMPLETE".to_owned(),
+                contract_doc: None,
                 status: None,
                 evidence: None,
                 unit: None,
@@ -7525,6 +7547,7 @@ mod tests {
                 repository
                     .update_story(StoryUpdateInput {
                         id: id.to_owned(),
+                        contract_doc: None,
                         status: Some(status.to_owned()),
                         evidence: None,
                         unit: None,
@@ -7808,6 +7831,7 @@ mod tests {
         repository
             .update_story(StoryUpdateInput {
                 id: "US-AUDIT".to_owned(),
+                contract_doc: None,
                 status: Some("in_progress".to_owned()),
                 evidence: None,
                 unit: None,
@@ -7830,6 +7854,7 @@ mod tests {
         repository
             .update_story(StoryUpdateInput {
                 id: "US-RETIRED".to_owned(),
+                contract_doc: None,
                 status: Some("retired".to_owned()),
                 evidence: None,
                 unit: None,
@@ -8530,6 +8555,7 @@ mod tests {
         repository
             .update_story(StoryUpdateInput {
                 id: "US-T".to_owned(),
+                contract_doc: None,
                 status: Some("implemented".to_owned()),
                 evidence: Some("unit test".to_owned()),
                 unit: Some(BoolFlag(1)),

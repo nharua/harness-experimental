@@ -42,6 +42,7 @@ pub struct StoryAddInput {
 #[derive(Debug)]
 pub struct StoryUpdateInput {
     pub id: String,
+    pub contract_doc: Option<String>,
     pub status: Option<String>,
     pub evidence: Option<String>,
     pub unit: Option<BoolFlag>,

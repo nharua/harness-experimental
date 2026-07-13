@@ -2,7 +2,7 @@
 
 ## Status
 
-in progress
+implemented
 
 ## Intake
 
@@ -44,6 +44,10 @@ context is retrieved by task shape, and repository checks run before merge.
 
 Each workstream is validated and committed independently. Later workstreams may
 depend on earlier invariants but must not weaken them.
+
+Completed on 2026-07-13 through commits `725a9ea`, `153a76f`, `acba26e`,
+`fad321a`, and `6bd7bb0`; the final proof record is in the US-101 validation
+document.
 
 ## Exit Signal
 

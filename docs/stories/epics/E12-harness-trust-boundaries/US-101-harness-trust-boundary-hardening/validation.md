@@ -31,23 +31,45 @@ documentation contracts.
 
 ## Commands
 
-The final wrapper will be added during implementation. Until then, every commit
-runs its focused test plus the relevant existing gates:
+Local proof, pull-request CI, release verification, and the durable US-101
+verification command now share one entrypoint:
 
-```text
-cargo fmt --check
-cargo test -p harness-cli --locked
-cargo clippy -p harness-cli --all-targets --locked -- -D warnings
-scripts/validate-changeset-rebuild.sh
-tests/core/assert-command-contract.sh
-tests/installer/test-install-harness-modes.sh
-git diff --check
+```bash
+scripts/validate-premerge.sh
 ```
+
+The wrapper runs Rust formatting, all 90 tests, clippy, revision/schema and
+bootstrap coherence, ownership negatives, protocol smoke, installer modes,
+documentation truth, representative task effects, release contracts, and
+`git diff --check`. Pull requests additionally run the PowerShell installer
+fixture on `windows-latest`.
 
 ## Acceptance Evidence
 
 - Main synchronized to `3ed8bb6`; release CLI rebuilt as `0.1.15`.
 - Local database migrated from schema 10 to schema 13 and contract state became
   `current`.
-- Remaining evidence is appended after each independently committed workstream
-  and the final release-grade run.
+- `725a9ea` rejects direct `implemented` updates, preserves rejected DB/log
+  state, and requires `story complete` for interactive completion.
+- `153a76f` opens SQL queries physically read-only and denies DML, mutating
+  pragmas, ATTACH, and WAL checkpoint effects while preserving SELECT/CTE and
+  safe pragma reads.
+- `acba26e` adds CLI/pin/schema coherence, consumer bootstrap, fail-closed core
+  ownership checks, and focused matrix views. The current active summary fell
+  from 48,082 bytes to 819 bytes while the unfiltered output remained
+  byte-for-byte compatible.
+- `fad321a` makes response-only requests read-only, keeps tiny-change default
+  Harness context below 8 KiB, and sources root/Bash/PowerShell/Claude behavior
+  from canonical instruction blocks.
+- `6bd7bb0` adds the shared pre-merge/release wrapper, live-document contract,
+  Ubuntu PR gate, Windows installer job, and deterministic task-effect suite.
+- `story verify US-101` and proof-backed `story complete US-101` both reran the
+  wrapper successfully; the final local verification result is `pass` at
+  `2026-07-13 03:12:13`. Detailed trace `#29` meets the high-risk 3/3 tier.
+- The ignored local source database is schema-current but still contains the
+  pre-cutover Symphony epoch. `verify-core-state-ownership.sh` now refuses that
+  state with the exact leaked story IDs instead of presenting it as coherent.
+  It was not destructively rewritten because no verified replacement epoch is
+  available in this checkout.
+- Local proof columns are unit/integration/E2E `yes`; platform remains `no`
+  until the new pull-request Windows job executes the PowerShell fixture.

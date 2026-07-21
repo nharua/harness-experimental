@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-21 - PR #55
+
+- feat(phase5): split optional consumer ownership (@hoangnb24)
+- Merge commit: `e5a5e2464ed5999cb07f2155d1eafb6e79d69a65`
+- Harness CLI release: not required
+- Changed files: 16 total
+  - `PHASE5.md`
+  - `README.md`
+  - `docs/HARNESS_COMPONENTS.md`
+  - `docs/README.md`
+  - `docs/compatibility/README.md`
+  - `docs/compatibility/phase-5-evolution-infrastructure-legacy.md`
+  - `docs/decisions/0023-optional-consumer-ownership.md`
+  - `docs/decisions/README.md`
+  - `docs/plans/README.md`
+  - `docs/plans/completed/README.md`
+  - `docs/plans/completed/phase-5-optional-consumer-split.md`
+  - `scripts/validate-premerge.sh`
+  - `tests/boundary/test-phase5-optional-consumer-split.sh`
+  - `tests/docs/test-doc-contracts.sh`
+  - `tests/workflow/test-repository-workflow.sh`
+  - `tests/workflow/test-task-authority.sh`
+
 ## 2026-07-21 - PR #54
 
 - feat(phase4): freeze upstream lifecycle writes (@hoangnb24)

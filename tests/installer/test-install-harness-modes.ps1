@@ -47,16 +47,20 @@ try {
     if (!(Get-Content -Raw (Join-Path $Full ".gitignore")).Contains("harness.db")) { throw "CLI ignore rules missing" }
 
     $Merge = Join-Path $Temp "merge"
-    New-Item -ItemType Directory -Force (Join-Path $Merge "docs"), (Join-Path $Merge "scripts/custom") | Out-Null
+    New-Item -ItemType Directory -Force (Join-Path $Merge "docs"), (Join-Path $Merge "scripts/custom"), (Join-Path $Merge "scripts/bin") | Out-Null
     "project agents" | Set-Content (Join-Path $Merge "AGENTS.md")
     "project harness" | Set-Content (Join-Path $Merge "docs/HARNESS.md")
     "keep" | Set-Content (Join-Path $Merge "scripts/custom/keep.txt")
+    "existing cli" | Set-Content (Join-Path $Merge "scripts/bin/harness-cli.exe")
+    "existing database" | Set-Content (Join-Path $Merge "harness.db")
     Invoke-Install $Merge @("Merge")
     if ((Get-Content -Raw (Join-Path $Merge "AGENTS.md")).Trim() -ne "project agents") { throw "merge replaced AGENTS" }
     if ((Get-Content -Raw (Join-Path $Merge "docs/HARNESS.md")).Trim() -ne "project harness") { throw "merge replaced docs" }
     if (!(Test-Path (Join-Path $Merge "docs/WORKFLOW.md"))) { throw "merge did not fill core payload" }
     if (Test-Path (Join-Path $Merge "docs/ARCHITECTURE.md")) { throw "core merge installed upstream architecture" }
-    if (Test-Path (Join-Path $Merge "scripts/bin/harness-cli.exe")) { throw "core merge installed CLI" }
+    if ((Get-Content -Raw (Join-Path $Merge "scripts/bin/harness-cli.exe")).Trim() -ne "existing cli") { throw "core merge changed existing CLI" }
+    if ((Get-Content -Raw (Join-Path $Merge "harness.db")).Trim() -ne "existing database") { throw "core merge changed existing database" }
+    if (Test-Path (Join-Path $Merge ".gitignore")) { throw "core merge wrote CLI ignore rules" }
 
     $Override = Join-Path $Temp "override"
     New-Item -ItemType Directory -Force (Join-Path $Override "docs"), (Join-Path $Override "scripts") | Out-Null

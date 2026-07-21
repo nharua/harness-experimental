@@ -79,18 +79,25 @@ grep -Fq 'No Harness CLI operation is required.' "$claude/AGENTS.md"
 
 # Merge preserves existing project material byte-for-byte while filling gaps.
 merge="$temp/merge"
-mkdir -p "$merge/docs" "$merge/scripts/custom"
+mkdir -p "$merge/docs" "$merge/scripts/custom" "$merge/scripts/bin"
 printf 'project agents\n' >"$merge/AGENTS.md"
 printf 'project harness doc\n' >"$merge/docs/HARNESS.md"
 printf 'custom script\n' >"$merge/scripts/custom/keep.txt"
+printf 'existing cli\n' >"$merge/scripts/bin/harness-cli"
+printf 'existing database\n' >"$merge/harness.db"
 before_agents=$(shasum -a 256 "$merge/AGENTS.md" | awk '{print $1}')
 before_doc=$(shasum -a 256 "$merge/docs/HARNESS.md" | awk '{print $1}')
+before_cli=$(shasum -a 256 "$merge/scripts/bin/harness-cli" | awk '{print $1}')
+before_db=$(shasum -a 256 "$merge/harness.db" | awk '{print $1}')
 install --directory "$merge" --merge --yes >"$temp/merge.out"
 [[ "$(shasum -a 256 "$merge/AGENTS.md" | awk '{print $1}')" == "$before_agents" ]]
 [[ "$(shasum -a 256 "$merge/docs/HARNESS.md" | awk '{print $1}')" == "$before_doc" ]]
 grep -Fxq 'custom script' "$merge/scripts/custom/keep.txt"
+[[ "$(shasum -a 256 "$merge/scripts/bin/harness-cli" | awk '{print $1}')" == "$before_cli" ]]
+[[ "$(shasum -a 256 "$merge/harness.db" | awk '{print $1}')" == "$before_db" ]]
+[[ ! -e "$merge/.gitignore" ]]
 [[ -f "$merge/docs/WORKFLOW.md" ]]
-[[ ! -e "$merge/docs/ARCHITECTURE.md" && ! -e "$merge/scripts/bin/harness-cli" ]]
+[[ ! -e "$merge/docs/ARCHITECTURE.md" ]]
 
 # Core override moves only the paths it owns; an existing scripts tree remains
 # untouched when CLI compatibility was not selected.

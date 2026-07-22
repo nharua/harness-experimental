@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-22 - PR #61
+
+- test(harness): derive update candidate versions (@hoangnb24)
+- Merge commit: `03169e22e9fb2d15a8245773da50913191ed9e33`
+- Harness CLI release: not required
+- Harness core candidate: `harness-v0.1.6` (publication requires platform proof)
+- Changed files: 1 total
+  - `crates/harness/tests/release_update.rs`
+
 ## 2026-07-22 - PR #60
 
 - feat(harness): add latest-release self-update (@hoangnb24)

@@ -33,7 +33,8 @@ or validation requirements. Keep local implementation choices in the plan.
 
 ## Active Plans
 
-None.
+- `application-legibility.md`: prove one complete real-consumer runtime,
+  reproduction, diagnosis, implementation, verification, and cleanup loop.
 
 ## Completed Plans
 
@@ -46,3 +47,6 @@ Phase 5 is retained because it records the final optional-consumer ownership
 boundary and why generic atomic protocol primitives remain in compatibility.
 The Rust core-maintenance plan is retained because it records the provenance,
 three-way merge, transaction, bootstrap, and release boundaries of `harness`.
+The repository-cleanup plan is retained because it records the removal boundary
+between current product proof, published compatibility, and one-time migration
+verification.

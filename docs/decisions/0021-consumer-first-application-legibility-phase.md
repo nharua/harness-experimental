@@ -141,7 +141,8 @@ Tradeoffs:
 
 ## Follow-Up
 
-- Keep `PHASE3.md` current with a P3-01 through P3-07 evidence matrix.
+- Keep `docs/plans/active/application-legibility.md` current with a P3-01
+  through P3-07 evidence matrix.
 - Retain the completed e-inna pilot and replay reports as the first checkpoint.
 - Select a real consumer task whose expected behavior is already authoritative
   and whose interface/runtime can be exercised locally.

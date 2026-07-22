@@ -63,10 +63,10 @@ one Runtime Substrate responsibility.
 | `CONTRIBUTING.md` | Intervention recording | Project memory |
 | `Cargo.toml` | Tool access | Verification |
 | `Cargo.lock` | Tool access | Verification |
-| `PHASE2.md` | Task specification | Observability, context selection |
-| `PHASE3.md` | Task specification | Observability, verification, entropy auditing |
-| `PHASE4.md` | Task specification | Verification, observability, task state |
-| `PHASE5.md` | Task specification | Ownership and compatibility boundaries |
+| `docs/plans/completed/phase-2-knowledge-boundary-and-payload-reduction.md` | Historical task specification | Context selection, installation boundary |
+| `docs/plans/active/application-legibility.md` | Current task specification | Application operation and observable verification |
+| `docs/plans/completed/phase-4-control-plane-freeze.md` | Historical task specification | Compatibility and task-state boundary |
+| `docs/plans/completed/phase-5-optional-consumer-split.md` | Historical task specification | Ownership and compatibility boundaries |
 | `docs/compatibility/phase-5-evolution-infrastructure-legacy.md` | Historical task specification | Verification, entropy auditing, intervention recording |
 | `crates/harness-cli/Cargo.toml` | Tool access | Verification |
 | `crates/harness-cli/src/main.rs` | Tool access | Tool implementation |

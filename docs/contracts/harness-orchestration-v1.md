@@ -174,7 +174,7 @@ The result is an array ordered by `id`. Each record has:
   "risk_lane": "high-risk",
   "contract_doc": "docs/.../overview.md",
   "status": "planned",
-  "verify_command": "scripts/verify-e11-us092.sh",
+  "verify_command": "cargo test --locked",
   "runnable": true
 }
 ```

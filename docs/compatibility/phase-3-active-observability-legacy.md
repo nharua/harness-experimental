@@ -4,7 +4,8 @@
 > lifecycle before decisions 0019 and 0020 made the repository-centered core
 > authoritative and moved that lifecycle behind explicit compatibility
 > selection. It is preserved for provenance and must not guide default
-> consumer work. See root `PHASE3.md` for the active phase.
+> consumer work. See `docs/plans/active/application-legibility.md` for the
+> active application-legibility plan.
 
 ---
 Phase 3 — Active Observability: Finalized Scope

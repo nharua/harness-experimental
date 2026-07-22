@@ -1,4 +1,6 @@
-# Reduction Phase 3 — Application Legibility Pilot
+# Execution Plan: Application Legibility Pilot
+
+Date: 2026-07-21
 
 ## Status
 
@@ -16,7 +18,7 @@ friction queries, and backlog operations is preserved at
 `docs/compatibility/phase-3-active-observability-legacy.md`. It is compatibility
 history, not the default workflow.
 
-## Anchor
+## Context
 
 OpenAI's
 [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/)
@@ -29,7 +31,7 @@ failures, and escalate only when judgment is required.
 That behavior depends on repository-specific structure and tooling. Phase 3
 therefore tests one real vertical path and does not claim universal legibility.
 
-## Target Outcome
+## Outcome
 
 Prove that a fresh agent can take one real application task through this loop:
 
@@ -48,6 +50,31 @@ discover how to run the application
 A genuine product or operational authority gap stops the run before edits. That
 stop is useful evidence, but it proves only the capabilities exercised before
 the stop.
+
+## Scope
+
+In scope:
+
+- One real consumer task with authoritative expected behavior.
+- Worktree-local runtime isolation, deterministic state, interface-level
+  reproduction, runtime evidence, focused proof, and independent cleanup.
+- Reusable repository guidance only after consumer evidence proves it reduces
+  human intervention.
+
+Out of scope:
+
+- A generic observability platform or application-legibility database.
+- Universal start commands, generic browser adapters, or orchestration policy
+  installed into every consumer.
+- Claims that generalize beyond the observed task, model, revision, and
+  environment.
+
+## Approach
+
+Observe one real task without improving its environment, record undocumented
+human intervention and missing capabilities, add only the smallest
+consumer-owned improvements, replay the frozen task, and retain patterns that
+improve the observed outcome.
 
 ## First Consumer: e-inna-brain
 
@@ -106,7 +133,20 @@ replay:   find policy gap -> explain consequences -> stop with no app diff
 This proves repository discovery and decision-boundary improvement. It does not
 prove runtime application legibility.
 
-## Evidence Matrix
+## Risks And Recovery
+
+- A task with missing product authority can stop before exercising the runtime
+  loop. Select the next task only after confirming that expected behavior is
+  already authoritative.
+- Consumer-specific tooling can be mistaken for a generic Harness feature.
+  Keep improvements in the consumer until repeated evidence supports reuse.
+- A failed experiment must leave its worktree, processes, ports, state, and
+  logs independently removable. Preserve the baseline revision and recovery
+  commands in the next evidence report.
+
+## Progress
+
+### Evidence Matrix
 
 | Workstream | Required evidence | e-inna result | Status |
 | --- | --- | --- | --- |
@@ -117,6 +157,13 @@ prove runtime application legibility.
 | P3-05 Agent-operable interface | Discoverable URL/request/auth and reproduction through the real surface | `/chat` route and contract were found; no HTTP request exercised the running service | Partial discovery only |
 | P3-06 Behavior to focused proof | Focused rule test plus appropriate broader proof | Adjacent tests were found; no authorized behavior existed to test | Not proven |
 | P3-07 Repeat improved task | Same task replayed; compare interventions, runtime, before/after proof, isolation, cleanup | Exact prompt replay reduced policy-boundary interventions from one to zero; runtime/interface loop remained unentered | Partial |
+
+## Decisions
+
+- 2026-07-21: Decision `0021` keeps this phase consumer-first and requires a
+  complete observable loop before completion.
+- 2026-07-21: The rate-limit replay is retained as decision-boundary evidence,
+  not runtime-legibility proof.
 
 ## Durable Evidence
 
@@ -132,7 +179,9 @@ prove runtime application legibility.
 These artifacts are Git-native evidence. No parallel intake, story, matrix,
 trace-score, audit, or proposal state is required.
 
-## What Is Proven
+## Validation
+
+### What Is Proven
 
 1. The reduced core can be installed into a brownfield application without
    reintroducing mandatory CLI/SQLite ceremony.
@@ -145,7 +194,7 @@ trace-score, audit, or proposal state is required.
 5. The result is reproducible for this task, model, repository revision, and
    local environment; it is not a universal reliability claim.
 
-## What Remains To Prove
+### What Remains To Prove
 
 1. Two application instances can run simultaneously in separate worktrees with
    isolated ports, writable state, logs, process identity, and cleanup.
@@ -207,3 +256,8 @@ Most Phase 3 implementation belongs in the consumer: stack-natural runtime
 commands, fixtures, readiness, instance-local logs, interface support, tests,
 and development documentation. `repository-harness` receives reusable knowledge
 only after consumer evidence proves it.
+
+## Result
+
+Pending. The decision-boundary replay is verified, but the complete runtime and
+interface loop remains unproven.

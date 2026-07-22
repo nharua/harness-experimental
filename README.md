@@ -77,6 +77,8 @@ process ladder.
 - [`docs/templates/exec-plan.md`](docs/templates/exec-plan.md) — plan template.
 - [`docs/README.md`](docs/README.md) — complete documentation map, including
   optional compatibility surfaces.
+- [`tests/README.md`](tests/README.md) — behavior ownership, validation entry
+  points, and removal boundaries for test suites.
 
 The default path requires no local database. Product documents, code, tests,
 plans, decisions, and Git history form one inspectable source of truth.

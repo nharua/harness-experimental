@@ -25,13 +25,14 @@ signals, and application behavior remain authoritative. Harness adds navigation
 and working-memory structure around that truth; it does not install upstream
 `repository-harness` product documents over it.
 
-## Optional Source Indexes
+## Source-Repository Indexes
 
 The following material is deliberately outside the default installation:
 
-- [Reduction Phase 3](https://github.com/hoangnb24/repository-harness/blob/main/PHASE3.md): current consumer-first application-legibility target, evidence matrix, and next gate.
-- [Reduction Phase 4](https://github.com/hoangnb24/repository-harness/blob/main/PHASE4.md): completed SQLite control-plane freeze, compatibility boundary, and evidence gates.
-- [Reduction Phase 5](https://github.com/hoangnb24/repository-harness/blob/main/PHASE5.md): completed optional-consumer ownership split between Harness, Symphony, and application evaluation.
+- [Application-legibility plan](https://github.com/hoangnb24/repository-harness/blob/main/docs/plans/active/application-legibility.md): current consumer-first evidence matrix and next gate.
+- [Control-plane freeze decision](https://github.com/hoangnb24/repository-harness/blob/main/docs/decisions/0022-control-plane-freeze-and-compatibility-runway.md): current compatibility boundary for SQLite and protocol v1.
+- [Optional-consumer ownership decision](https://github.com/hoangnb24/repository-harness/blob/main/docs/decisions/0023-optional-consumer-ownership.md): current ownership split between Harness, Symphony, and consumer applications.
+- [Test suite map](https://github.com/hoangnb24/repository-harness/blob/main/tests/README.md): behavior protected by each current, compatibility, and historical test group.
 - [CLI compatibility index](https://github.com/hoangnb24/repository-harness/blob/main/docs/compatibility/README.md): SQLite lifecycle, orchestration protocol, bootstrap, schemas, and CLI maintenance.
 - [Historical index](https://github.com/hoangnb24/repository-harness/blob/main/docs/provenance/README.md): superseded decisions, story-era evidence, reviews, and migration provenance.
 - [Upstream repository](https://github.com/hoangnb24/repository-harness): Rust implementation, installer, release, and maintenance truth.

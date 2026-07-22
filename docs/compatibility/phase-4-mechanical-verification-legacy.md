@@ -3,7 +3,8 @@
 > Historical compatibility roadmap. Its phase numbering predates decisions
 > 0019 and 0020 and is not the active repository-centered roadmap. The Rust
 > CLI/SQLite workflow it describes remains available only through explicit
-> compatibility selection. See `PHASE3.md` for the active phase.
+> compatibility selection. See `docs/plans/active/application-legibility.md`
+> for the active application-legibility plan.
 
 **Target repo:** `repository-harness` (feature branch off `main`)
 **Validation:** `harness-benchmark` re-run after implementation

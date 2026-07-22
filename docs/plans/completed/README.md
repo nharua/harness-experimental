@@ -31,6 +31,9 @@ instead of creating permanent plan documents.
 - `rust-harness-core-maintenance-cli.md`: introduced the independent Rust
   `harness` binary for recoverable core installation, provenance, three-way
   updates, diagnostics, and immutable cross-platform release bootstrap.
+- `repository-cleanup.md`: consolidated active and completed phase authority,
+  documented test ownership, and removed caller-free E11/cutover verification
+  executables while preserving published compatibility paths.
 
 The Phase 3 entries are completed evidence checkpoints, not a claim that the
 full application runtime/interface loop is complete. Decision 0021 keeps the

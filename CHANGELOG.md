@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-22 - PR #59
+
+- chore(repo): remove obsolete migration artifacts (@hoangnb24)
+- Merge commit: `fc0e5f7cd4d27030fbede293946a071eaebe6d44`
+- Harness CLI release: not required
+- Harness core candidate: `harness-v0.1.4` (publication requires platform proof)
+- Changed files: 51 total (first 20 shown)
+  - `PHASE2.md`
+  - `PHASE4.md`
+  - `PHASE5.md`
+  - `README.md`
+  - `docs/HARNESS_COMPONENTS.md`
+  - `docs/README.md`
+  - `docs/compatibility/phase-3-active-observability-legacy.md`
+  - `docs/compatibility/phase-4-mechanical-verification-legacy.md`
+  - `docs/compatibility/phase-5-evolution-infrastructure-legacy.md`
+  - `docs/contracts/harness-orchestration-v1.md`
+  - `docs/decisions/0021-consumer-first-application-legibility-phase.md`
+  - `docs/plans/README.md`
+  - `docs/plans/active/application-legibility.md`
+  - `docs/plans/completed/README.md`
+  - `docs/plans/completed/repository-cleanup.md`
+  - `scripts/e11-us089-baseline.py`
+  - `scripts/e11-us097-dispositions.py`
+  - `scripts/e11-us097-inventory.py`
+  - `scripts/e11-us097-prepare-core.py`
+  - `scripts/run-e11-us089-frozen-baseline.sh`
+  - _… 31 additional file(s) omitted from this entry._
+
 ## 2026-07-21 - PR #58
 
 - Isolate core release artifacts (@hoangnb24)

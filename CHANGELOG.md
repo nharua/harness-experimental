@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-23 - PR #62
+
+- feat(skills): install repository onboarding workflow (@hoangnb24)
+- Merge commit: `ed6be08a8407fc000db7fe2ef34fcfab8d39605c`
+- Harness CLI release: not required
+- Harness core candidate: `harness-v0.1.7` (publication requires platform proof)
+- Changed files: 27 total (first 20 shown)
+  - `.agents/skills/audit-onboarding-proposal/SKILL.md`
+  - `.agents/skills/audit-onboarding-proposal/agents/openai.yaml`
+  - `.agents/skills/audit-onboarding-proposal/scripts/validate_evidence_capsule.py`
+  - `.agents/skills/onboard-repository/SKILL.md`
+  - `.agents/skills/onboard-repository/agents/openai.yaml`
+  - `.agents/skills/onboard-repository/references/evidence-capsule-v1.md`
+  - `.agents/skills/onboard-repository/references/evidence-capsule-v2.md`
+  - `.agents/skills/onboard-repository/scripts/emit_evidence_bundle.py`
+  - `.agents/skills/onboard-repository/scripts/render_patch.py`
+  - `README.md`
+  - `crates/harness/src/infrastructure/embedded_distribution.rs`
+  - `docs/README.md`
+  - `docs/decisions/0020-installation-profiles-and-knowledge-boundaries.md`
+  - `docs/decisions/0023-optional-consumer-ownership.md`
+  - `docs/decisions/0026-explicit-onboarding-skills-in-default-core.md`
+  - `docs/decisions/README.md`
+  - `docs/plans/active/application-legibility.md`
+  - `docs/product/installation-profiles.md`
+  - `scripts/README.md`
+  - `scripts/harness-install-files.txt`
+  - _… 7 additional file(s) omitted from this entry._
+
 ## 2026-07-22 - PR #61
 
 - test(harness): derive update candidate versions (@hoangnb24)
